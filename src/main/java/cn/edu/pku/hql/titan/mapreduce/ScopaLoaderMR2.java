@@ -158,7 +158,7 @@ public class ScopaLoaderMR2 {
 
     private static void setupClassPath(Job job) throws IOException {
         FileSystem fs = FileSystem.get(job.getConfiguration());
-        String titanLibDir = "/user/hadoop/titanLibsAll";  // TODO should be an argument
+        String titanLibDir = "/user/hadoop/huangql/titanLibs";  // TODO should be an argument
         RemoteIterator<LocatedFileStatus> libIt = fs.listFiles(new Path(titanLibDir), true);
         while (libIt.hasNext()) {
             job.addFileToClassPath(libIt.next().getPath());

@@ -121,7 +121,7 @@ public class RawLoaderMR2 {
 
     private static void setupClassPath(Job job) throws IOException {
         FileSystem fs = FileSystem.get(job.getConfiguration());
-        String titanLibDir = "/user/hadoop/titanLibsAll";  // TODO should be an argument
+        String titanLibDir = "/user/hadoop/huangql/titanLibs";  // TODO should be an argument
         RemoteIterator<LocatedFileStatus> libIt = fs.listFiles(new Path(titanLibDir), true);
         while (libIt.hasNext()) {
             job.addFileToClassPath(libIt.next().getPath());
@@ -129,9 +129,9 @@ public class RawLoaderMR2 {
     }
 
     public static void main(String[] args) throws Exception {
-        logger.info("This is RawLoaderMR2 compiled after 11:30AM 2016/5/8");
         if (args.length < 4) {
             System.out.println("Args: titanConf label indices(key1,key2,time) inputPath [edge_times]");
+            System.out.println("Example: hbase-es-titan.properties rycc 0,19,9 input/edgeFileNames 1");
             System.exit(1);
         }
         String titanConf = args[0];

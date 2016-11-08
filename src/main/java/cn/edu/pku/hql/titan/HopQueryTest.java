@@ -49,8 +49,8 @@ public class HopQueryTest {
                 TitanMultiVertexQuery mq = graph.multiQuery();
                 mq.direction(Direction.BOTH).labels(label);
                 mq.addAllVertices(vSet);
-                Map<TitanVertex,Iterable<TitanVertex>> results = mq.vertices();
                 vSet.clear();
+                Map<TitanVertex,Iterable<TitanVertex>> results = mq.vertices();
                 for (Iterable<TitanVertex> nvs : results.values()) {
                     for (TitanVertex v : nvs) {
                         vSet.add(v);
