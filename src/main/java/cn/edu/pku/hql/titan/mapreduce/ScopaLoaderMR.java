@@ -185,7 +185,7 @@ public class ScopaLoaderMR {
         Thread.sleep(1000);
 
         if (args.length < 4) {
-            System.out.println("Args: titanConf label indices(key1,key2,time) inputPath [sortByTime]");
+            System.out.println("Args: titanConf label indices(key1,key2,time) inputPath [linesPerSplit] [sortByTime]");
             System.exit(1);
         }
         String titanConf = args[0];
