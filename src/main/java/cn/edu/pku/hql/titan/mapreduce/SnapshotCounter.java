@@ -1,12 +1,17 @@
 package cn.edu.pku.hql.titan.mapreduce;
 
+import com.thinkaurelius.titan.core.RelationType;
 import com.thinkaurelius.titan.core.TitanFactory;
-import com.thinkaurelius.titan.core.TitanGraph;
-import com.thinkaurelius.titan.diskstorage.Backend;
+import com.thinkaurelius.titan.diskstorage.Entry;
+import com.thinkaurelius.titan.diskstorage.EntryList;
+import com.thinkaurelius.titan.diskstorage.EntryMetaData;
 import com.thinkaurelius.titan.diskstorage.util.StaticArrayBuffer;
+import com.thinkaurelius.titan.diskstorage.util.StaticArrayEntry;
+import com.thinkaurelius.titan.diskstorage.util.StaticArrayEntryList;
 import com.thinkaurelius.titan.graphdb.database.StandardTitanGraph;
-import com.thinkaurelius.titan.graphdb.database.idhandling.IDHandler;
 import com.thinkaurelius.titan.graphdb.idmanagement.IDManager;
+import com.thinkaurelius.titan.graphdb.relations.RelationCache;
+import com.thinkaurelius.titan.graphdb.transaction.StandardTitanTx;
 import com.thinkaurelius.titan.util.stats.NumberUtil;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -32,6 +37,8 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Map;
+import java.util.NavigableMap;
 import java.util.Random;
 
 /**
@@ -50,10 +57,46 @@ public class SnapshotCounter implements Tool {
         EDGE_COUNT
     }
 
-    public static class Map extends TableMapper<NullWritable, NullWritable> {
+    // Copy from com.thinkaurelius.titan.diskstorage.hbase.HBaseKeyColumnValueStore$HBaseGetter
+    private static class HBaseGetter implements
+            StaticArrayEntry.GetColVal<Map.Entry<byte[], NavigableMap<Long, byte[]>>, byte[]> {
+
+        private final EntryMetaData[] schema;
+
+        private HBaseGetter(EntryMetaData[] schema) {
+            this.schema = schema;
+        }
+
+        @Override
+        public byte[] getColumn(Map.Entry<byte[], NavigableMap<Long, byte[]>> element) {
+            return element.getKey();
+        }
+
+        @Override
+        public byte[] getValue(Map.Entry<byte[], NavigableMap<Long, byte[]>> element) {
+            return element.getValue().lastEntry().getValue();
+        }
+
+        @Override
+        public EntryMetaData[] getMetaSchema(Map.Entry<byte[], NavigableMap<Long, byte[]>> element) {
+            return schema;
+        }
+
+        @Override
+        public Object getMetaData(Map.Entry<byte[], NavigableMap<Long, byte[]>> element, EntryMetaData meta) {
+            switch(meta) {
+                case TIMESTAMP:
+                    return element.getValue().lastEntry().getKey();
+                default:
+                    throw new UnsupportedOperationException("Unsupported meta data: " + meta);
+            }
+        }
+    }
+
+    public static class CounterMap extends TableMapper<NullWritable, NullWritable> {
 
         private StandardTitanGraph graph;
-
+        private StandardTitanTx tx;
         // For stores that preserve key order (such as HBase and Cassandra), cluster.partition default to true.
         // References:
         // http://s3.thinkaurelius.com/docs/titan/0.5.4/titan-config-ref.html
@@ -61,13 +104,14 @@ public class SnapshotCounter implements Tool {
         // https://github.com/thinkaurelius/titan/blob/0.5.4/titan-core/src/main/java/com/thinkaurelius/titan/graphdb/database/idassigner/VertexIDAssigner.java#L75
         // https://github.com/thinkaurelius/titan/blob/0.5.4/titan-core/src/main/java/com/thinkaurelius/titan/graphdb/configuration/GraphDatabaseConfiguration.java#L630
         private IDManager idManager = new IDManager(NumberUtil.getPowerOf2(64L));
+        private HBaseGetter entryGetter = new HBaseGetter(new EntryMetaData[]{EntryMetaData.TIMESTAMP});
         private int vertexCount = 0;
         private int edgeCount = 0;
 
         public void setup(Context context) throws IOException, InterruptedException {
             graph = (StandardTitanGraph) TitanFactory.open(
                     context.getConfiguration().get(TITAN_CONF_KEY));
-            //graph.getEdgeSerializer().readRelation(entry, false, tx);
+            tx = (StandardTitanTx) graph.newTransaction();
         }
 
         public void map(ImmutableBytesWritable key, Result value,
@@ -75,11 +119,18 @@ public class SnapshotCounter implements Tool {
             long vid = idManager.getKeyID(new StaticArrayBuffer(key.get()));
             if (!IDManager.VertexIDType.NormalVertex.is(vid))
                 return;
-
             vertexCount++;
-            // TODO: extract edge message
-            //value.getFamilyMap(Backend.EDGESTORE_NAME.getBytes());
-            //new StaticBufferEntry()
+
+            // See com.thinkaurelius.titan.diskstorage.hbase.HBaseKeyColumnValueStore#getHelper
+            EntryList entryList = StaticArrayEntryList.ofBytes(
+                    value.getMap().get(Bytes.toBytes("e")).entrySet(),
+                    entryGetter);
+            for (Entry entry : entryList) {
+                RelationCache relation = graph.getEdgeSerializer().readRelation(entry, false, tx);
+                RelationType type = tx.getExistingRelationType(relation.typeId);
+                if (type.isEdgeLabel())
+                    edgeCount++;
+            }
         }
 
         public void cleanup(Context context) throws IOException, InterruptedException {
@@ -112,7 +163,7 @@ public class SnapshotCounter implements Tool {
 
         Job job = Job.getInstance(getConf(), "Titan vertices & edges counter");
         job.setJarByClass(SnapshotCounter.class);
-        job.setMapperClass(Map.class);
+        job.setMapperClass(CounterMap.class);
         job.setNumReduceTasks(0);
 
         job.setInputFormatClass(TableSnapshotInputFormat.class);
@@ -120,7 +171,7 @@ public class SnapshotCounter implements Tool {
         TableMapReduceUtil.initTableSnapshotMapperJob(
                 snapshotName,
                 new Scan().addFamily(Bytes.toBytes("e")),
-                SnapshotCounter.Map.class,
+                CounterMap.class,
                 NullWritable.class,
                 NullWritable.class,
                 job,
