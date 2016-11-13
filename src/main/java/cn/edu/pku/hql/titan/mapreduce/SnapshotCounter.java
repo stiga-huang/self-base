@@ -7,25 +7,31 @@ import com.thinkaurelius.titan.diskstorage.util.StaticArrayBuffer;
 import com.thinkaurelius.titan.graphdb.database.StandardTitanGraph;
 import com.thinkaurelius.titan.graphdb.database.idhandling.IDHandler;
 import com.thinkaurelius.titan.graphdb.idmanagement.IDManager;
+import com.thinkaurelius.titan.util.stats.NumberUtil;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.LocatedFileStatus;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.RemoteIterator;
+import org.apache.hadoop.hbase.HBaseConfiguration;
+import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable;
 import org.apache.hadoop.hbase.mapreduce.TableMapReduceUtil;
 import org.apache.hadoop.hbase.mapreduce.TableMapper;
 import org.apache.hadoop.hbase.mapreduce.TableSnapshotInputFormat;
+import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.lib.output.NullOutputFormat;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.Random;
 
 /**
@@ -47,7 +53,14 @@ public class SnapshotCounter implements Tool {
     public static class Map extends TableMapper<NullWritable, NullWritable> {
 
         private StandardTitanGraph graph;
-        private IDManager idManager = new IDManager();
+
+        // For stores that preserve key order (such as HBase and Cassandra), cluster.partition default to true.
+        // References:
+        // http://s3.thinkaurelius.com/docs/titan/0.5.4/titan-config-ref.html
+        // https://github.com/thinkaurelius/titan/blob/0.5.4/titan-core/src/main/java/com/thinkaurelius/titan/graphdb/configuration/GraphDatabaseConfiguration.java#L622
+        // https://github.com/thinkaurelius/titan/blob/0.5.4/titan-core/src/main/java/com/thinkaurelius/titan/graphdb/database/idassigner/VertexIDAssigner.java#L75
+        // https://github.com/thinkaurelius/titan/blob/0.5.4/titan-core/src/main/java/com/thinkaurelius/titan/graphdb/configuration/GraphDatabaseConfiguration.java#L630
+        private IDManager idManager = new IDManager(NumberUtil.getPowerOf2(64L));
         private int vertexCount = 0;
         private int edgeCount = 0;
 
@@ -64,8 +77,9 @@ public class SnapshotCounter implements Tool {
                 return;
 
             vertexCount++;
-            value.getFamilyMap(Backend.EDGESTORE_NAME.getBytes());
-            new StaticBufferEntry()
+            // TODO: extract edge message
+            //value.getFamilyMap(Backend.EDGESTORE_NAME.getBytes());
+            //new StaticBufferEntry()
         }
 
         public void cleanup(Context context) throws IOException, InterruptedException {
@@ -91,6 +105,7 @@ public class SnapshotCounter implements Tool {
     public int run(String[] args) throws Exception {
         if (args.length < 2) {
             System.err.println("Args: snapshotName titanConf");
+            return 1;
         }
         String snapshotName = args[0];
         String titanConf = args[1];
@@ -101,9 +116,10 @@ public class SnapshotCounter implements Tool {
         job.setNumReduceTasks(0);
 
         job.setInputFormatClass(TableSnapshotInputFormat.class);
+        job.setOutputFormatClass(NullOutputFormat.class);
         TableMapReduceUtil.initTableSnapshotMapperJob(
                 snapshotName,
-                new Scan().addFamily(Backend.EDGESTORE_NAME.getBytes()),
+                new Scan().addFamily(Bytes.toBytes("e")),
                 SnapshotCounter.Map.class,
                 NullWritable.class,
                 NullWritable.class,
@@ -138,6 +154,21 @@ public class SnapshotCounter implements Tool {
     }
 
     public static void main(String[] args) throws Exception {
-        ToolRunner.run(new Configuration(), new SnapshotCounter(), args);
+        InputStream in = SnapshotCounter.class.getClassLoader().getResourceAsStream("hbase-site.xml");
+        if (in == null) {
+            System.err.println("hbase-site.xml not found in classpath");
+            System.exit(1);
+        } else {
+            in.close();
+        }
+
+        Configuration conf = HBaseConfiguration.create();
+        if (conf.get(HConstants.HBASE_DIR) == null) {
+            System.err.println("hbase configs not set");
+            System.exit(1);
+        }
+        System.out.println("hbase root dir: " + conf.get(HConstants.HBASE_DIR));
+
+        ToolRunner.run(conf, new SnapshotCounter(), args);
     }
 }
