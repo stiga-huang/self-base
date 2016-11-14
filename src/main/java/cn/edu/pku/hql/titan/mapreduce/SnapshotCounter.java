@@ -54,7 +54,8 @@ public class SnapshotCounter implements Tool {
 
     enum TitanCounters {
         VERTEX_COUNT,
-        EDGE_COUNT
+        EDGE_COUNT,
+        V_PROP_COUNT
     }
 
     // Copy from com.thinkaurelius.titan.diskstorage.hbase.HBaseKeyColumnValueStore$HBaseGetter
@@ -107,6 +108,7 @@ public class SnapshotCounter implements Tool {
         private HBaseGetter entryGetter = new HBaseGetter(new EntryMetaData[]{EntryMetaData.TIMESTAMP});
         private int vertexCount = 0;
         private int edgeCount = 0;
+        private long vPropCount = 0;
 
         public void setup(Context context) throws IOException, InterruptedException {
             graph = (StandardTitanGraph) TitanFactory.open(
@@ -130,12 +132,15 @@ public class SnapshotCounter implements Tool {
                 RelationType type = tx.getExistingRelationType(relation.typeId);
                 if (type.isEdgeLabel())
                     edgeCount++;
+                else if (type.isPropertyKey())
+                    vPropCount++;
             }
         }
 
         public void cleanup(Context context) throws IOException, InterruptedException {
             context.getCounter(TitanCounters.VERTEX_COUNT).increment(vertexCount);
             context.getCounter(TitanCounters.EDGE_COUNT).increment(edgeCount);
+            context.getCounter(TitanCounters.V_PROP_COUNT).increment(vPropCount);
             if (graph != null) {
                 graph.shutdown();
             }
@@ -190,6 +195,9 @@ public class SnapshotCounter implements Tool {
         fs.copyFromLocalFile(src, dst);
         job.addCacheFile(dst.toUri());
         fs.deleteOnExit(dst);   // DO Not close this fs!
+                                // It will be closed When JVM exit.
+                                // These tmp files will be deleted at that time.
+        job.getConfiguration().set(TITAN_CONF_KEY, baseName);
 
         return job.waitForCompletion(true) ? 0 : 1;
     }
