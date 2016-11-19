@@ -1,5 +1,6 @@
 package cn.edu.pku.hql.titan.mapreduce;
 
+import cn.edu.pku.hql.titan.TitanHBaseReaderTest;
 import com.thinkaurelius.titan.core.RelationType;
 import com.thinkaurelius.titan.core.TitanFactory;
 import com.thinkaurelius.titan.diskstorage.Entry;
@@ -9,6 +10,7 @@ import com.thinkaurelius.titan.diskstorage.util.StaticArrayBuffer;
 import com.thinkaurelius.titan.diskstorage.util.StaticArrayEntry;
 import com.thinkaurelius.titan.diskstorage.util.StaticArrayEntryList;
 import com.thinkaurelius.titan.graphdb.database.StandardTitanGraph;
+import com.thinkaurelius.titan.graphdb.idmanagement.IDInspector;
 import com.thinkaurelius.titan.graphdb.idmanagement.IDManager;
 import com.thinkaurelius.titan.graphdb.relations.RelationCache;
 import com.thinkaurelius.titan.graphdb.transaction.StandardTitanTx;
@@ -33,10 +35,7 @@ import org.apache.hadoop.mapreduce.lib.output.NullOutputFormat;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Random;
@@ -55,18 +54,13 @@ public class SnapshotCounter implements Tool {
     enum TitanCounters {
         VERTEX_COUNT,
         EDGE_COUNT,
-        V_PROP_COUNT
     }
 
     // Copy from com.thinkaurelius.titan.diskstorage.hbase.HBaseKeyColumnValueStore$HBaseGetter
-    private static class HBaseGetter implements
+    public static class HBaseGetter implements
             StaticArrayEntry.GetColVal<Map.Entry<byte[], NavigableMap<Long, byte[]>>, byte[]> {
 
-        private final EntryMetaData[] schema;
-
-        private HBaseGetter(EntryMetaData[] schema) {
-            this.schema = schema;
-        }
+        private final EntryMetaData[] schema = new EntryMetaData[]{EntryMetaData.TIMESTAMP};
 
         @Override
         public byte[] getColumn(Map.Entry<byte[], NavigableMap<Long, byte[]>> element) {
@@ -98,6 +92,7 @@ public class SnapshotCounter implements Tool {
 
         private StandardTitanGraph graph;
         private StandardTitanTx tx;
+        private IDInspector inspector;
         // For stores that preserve key order (such as HBase and Cassandra), cluster.partition default to true.
         // References:
         // http://s3.thinkaurelius.com/docs/titan/0.5.4/titan-config-ref.html
@@ -105,17 +100,20 @@ public class SnapshotCounter implements Tool {
         // https://github.com/thinkaurelius/titan/blob/0.5.4/titan-core/src/main/java/com/thinkaurelius/titan/graphdb/database/idassigner/VertexIDAssigner.java#L75
         // https://github.com/thinkaurelius/titan/blob/0.5.4/titan-core/src/main/java/com/thinkaurelius/titan/graphdb/configuration/GraphDatabaseConfiguration.java#L630
         private IDManager idManager = new IDManager(NumberUtil.getPowerOf2(64L));
-        private HBaseGetter entryGetter = new HBaseGetter(new EntryMetaData[]{EntryMetaData.TIMESTAMP});
+        private HBaseGetter entryGetter = new HBaseGetter();
         private int vertexCount = 0;
         private int edgeCount = 0;
-        private long vPropCount = 0;
 
         public void setup(Context context) throws IOException, InterruptedException {
             graph = (StandardTitanGraph) TitanFactory.open(
                     context.getConfiguration().get(TITAN_CONF_KEY));
             tx = (StandardTitanTx) graph.newTransaction();
+            inspector = graph.getIDInspector();
         }
 
+        /**
+         * Following logic has been verified in {@link TitanHBaseReaderTest}
+         */
         public void map(ImmutableBytesWritable key, Result value,
                         Context context) throws IOException, InterruptedException {
             long vid = idManager.getKeyID(new StaticArrayBuffer(key.get()));
@@ -130,26 +128,26 @@ public class SnapshotCounter implements Tool {
             for (Entry entry : entryList) {
                 RelationCache relation = graph.getEdgeSerializer().readRelation(entry, false, tx);
                 RelationType type = tx.getExistingRelationType(relation.typeId);
-                if (type.isEdgeLabel())
+                if (type.isEdgeLabel() && !inspector.isEdgeLabelId(relation.relationId))
                     edgeCount++;
-                else if (type.isPropertyKey())
-                    vPropCount++;
             }
         }
 
         public void cleanup(Context context) throws IOException, InterruptedException {
             context.getCounter(TitanCounters.VERTEX_COUNT).increment(vertexCount);
             context.getCounter(TitanCounters.EDGE_COUNT).increment(edgeCount);
-            context.getCounter(TitanCounters.V_PROP_COUNT).increment(vPropCount);
             if (graph != null) {
                 graph.shutdown();
             }
         }
     }
 
-    private static void setupClassPath(Job job) throws IOException {
+    /**
+     * @param titanLibDir titan lib directory in HDFS
+     * @throws IOException
+     */
+    private void setupClassPath(Job job, String titanLibDir) throws IOException {
         FileSystem fs = FileSystem.get(job.getConfiguration());
-        String titanLibDir = "/user/hadoop/huangql/titanLibs";  // TODO should be an argument
         System.out.println("Using titan libs in HDFS path: " + titanLibDir);
         RemoteIterator<LocatedFileStatus> libIt = fs.listFiles(new Path(titanLibDir), true);
         while (libIt.hasNext()) {
@@ -159,17 +157,19 @@ public class SnapshotCounter implements Tool {
 
     @Override
     public int run(String[] args) throws Exception {
-        if (args.length < 2) {
-            System.err.println("Args: snapshotName titanConf");
+        if (args.length < 3) {
+            System.err.println("Args: snapshotName titanConf hdfsTitanLibDir");
             return 1;
         }
         String snapshotName = args[0];
         String titanConf = args[1];
+        String libDir = args[2];
 
         Job job = Job.getInstance(getConf(), "Titan vertices & edges counter");
         job.setJarByClass(SnapshotCounter.class);
         job.setMapperClass(CounterMap.class);
         job.setNumReduceTasks(0);
+        job.setSpeculativeExecution(false);
 
         job.setInputFormatClass(TableSnapshotInputFormat.class);
         job.setOutputFormatClass(NullOutputFormat.class);
@@ -183,7 +183,7 @@ public class SnapshotCounter implements Tool {
                 false,
                 new Path("/tmp/snapshot_counter" + new Random().nextInt()));
 
-        setupClassPath(job);
+        setupClassPath(job, libDir);
         // upload titanConf and add to distributed cache
         File file = new File(titanConf);
         if (!file.exists())
@@ -218,12 +218,13 @@ public class SnapshotCounter implements Tool {
             System.err.println("hbase-site.xml not found in classpath");
             System.exit(1);
         } else {
+            System.out.print("hbase-site.xml found: ");
             in.close();
         }
 
         Configuration conf = HBaseConfiguration.create();
         if (conf.get(HConstants.HBASE_DIR) == null) {
-            System.err.println("hbase configs not set");
+            System.err.println("hbase root dir not set");
             System.exit(1);
         }
         System.out.println("hbase root dir: " + conf.get(HConstants.HBASE_DIR));
