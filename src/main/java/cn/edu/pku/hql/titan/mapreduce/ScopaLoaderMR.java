@@ -1,5 +1,6 @@
 package cn.edu.pku.hql.titan.mapreduce;
 
+import cn.edu.pku.hql.titan.Util;
 import com.thinkaurelius.titan.core.*;
 import com.thinkaurelius.titan.core.schema.TitanManagement;
 import com.tinkerpop.blueprints.Vertex;
@@ -60,6 +61,10 @@ public class ScopaLoaderMR {
         private String label;
         private int key1Index, key2Index, timeIndex;
         private Counter badLineCount;
+
+        static {
+            Util.suppressUselessInfoLogs();
+        }
 
         public void setup(Context context) throws IOException, InterruptedException {
             Configuration conf = context.getConfiguration();

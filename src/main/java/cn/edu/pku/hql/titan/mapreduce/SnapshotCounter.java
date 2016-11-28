@@ -1,6 +1,7 @@
 package cn.edu.pku.hql.titan.mapreduce;
 
 import cn.edu.pku.hql.titan.TitanHBaseReaderTest;
+import cn.edu.pku.hql.titan.Util;
 import com.thinkaurelius.titan.core.RelationType;
 import com.thinkaurelius.titan.core.TitanFactory;
 import com.thinkaurelius.titan.diskstorage.Entry;
@@ -103,6 +104,10 @@ public class SnapshotCounter implements Tool {
         private HBaseGetter entryGetter = new HBaseGetter();
         private int vertexCount = 0;
         private int edgeCount = 0;
+
+        static {
+            Util.suppressUselessInfoLogs();
+        }
 
         public void setup(Context context) throws IOException, InterruptedException {
             graph = (StandardTitanGraph) TitanFactory.open(
