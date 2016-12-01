@@ -149,7 +149,7 @@ public class ScopaLoaderMR {
 
     private static void setupClassPath(Job job) throws IOException {
         FileSystem fs = FileSystem.get(job.getConfiguration());
-        String titanLibDir = "/user/hadoop/titanLibsAll";  // TODO should be an argument
+        String titanLibDir = "/user/hadoop/huangql/titanLibs";  // TODO should be an argument
         RemoteIterator<LocatedFileStatus> libIt = fs.listFiles(new Path(titanLibDir), true);
         while (libIt.hasNext()) {
             job.addFileToClassPath(libIt.next().getPath());
@@ -234,9 +234,9 @@ public class ScopaLoaderMR {
         mgnt.commit();
         graph.shutdown();
         // create hbase table;
-        Configuration conf = new Configuration();
+        Configuration conf = HBaseConfiguration.create();
         String zookeeperQuorumKey = "hbase.zookeeper.quorum";
-        String zookeeperQuorum = "k1222.mlamp.co:2181,k1223.mlamp.co:2181,k1230.mlamp.co:2181";
+        String zookeeperQuorum = "daim209";
         if (!zookeeperQuorum.equals(conf.get(zookeeperQuorumKey))) {
             logger.error("Wrong " + zookeeperQuorumKey + ": " + conf.get(zookeeperQuorumKey));
             conf.set(zookeeperQuorumKey, zookeeperQuorum);

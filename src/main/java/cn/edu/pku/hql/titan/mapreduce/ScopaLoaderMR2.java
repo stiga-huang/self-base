@@ -237,9 +237,9 @@ public class ScopaLoaderMR2 {
         mgnt.commit();
         graph.shutdown();
         // create hbase table;
-        Configuration conf = new Configuration();
+        Configuration conf = HBaseConfiguration.create();
         String zookeeperQuorumKey = "hbase.zookeeper.quorum";
-        String zookeeperQuorum = "k1222.mlamp.co:2181,k1223.mlamp.co:2181,k1230.mlamp.co:2181";
+        String zookeeperQuorum = "daim209";
         if (!zookeeperQuorum.equals(conf.get(zookeeperQuorumKey))) {
             logger.error("Wrong " + zookeeperQuorumKey + ": " + conf.get(zookeeperQuorumKey));
             conf.set(zookeeperQuorumKey, zookeeperQuorum);
