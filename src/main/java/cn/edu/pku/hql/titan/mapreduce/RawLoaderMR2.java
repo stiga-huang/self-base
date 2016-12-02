@@ -183,7 +183,9 @@ public class RawLoaderMR2 {
 
         // make sure every worker running uniquely
         job.setSpeculativeExecution(false);
-        // default task timeout is 10min, set it to 0 to disable timeout
+        // The number of milliseconds before a task will be terminated
+        // if it neither reads an input, writes an output, nor updates
+        // its status string. A value of 0 disables the timeout.
         job.getConfiguration().set("mapreduce.task.timeout", "0");
 
         setupClassPath(job);

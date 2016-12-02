@@ -52,8 +52,6 @@ public class ScopaLoaderMR {
 
         private ImmutableBytesWritable rowKey = new ImmutableBytesWritable();
 
-        //private HConnection conn;
-        //private HTableInterface table;
         private static final byte[] columnFamily = Bytes.toBytes("f");
         private static final byte[] columnQualifier = Bytes.toBytes("c");
 
@@ -73,10 +71,6 @@ public class ScopaLoaderMR {
             key1Index = Integer.parseInt(conf.get(KEY1_INDEX_KEY));
             key2Index = Integer.parseInt(conf.get(KEY2_INDEX_KEY));
             timeIndex = Integer.parseInt(conf.get(TIME_INDEX_KEY));
-
-            //Configuration hConf = HBaseConfiguration.create(conf);
-            //conn = HConnectionManager.createConnection(hConf);
-            //table = conn.getTable(TABLE_NAME);
 
             badLineCount = context.getCounter("dataloader", "Bad Lines");
         }
@@ -243,6 +237,8 @@ public class ScopaLoaderMR {
         }
         createTable(TABLE_NAME, conf);
 
+        conf.set("mapreduce.map.memory.mb", "4096");
+        conf.set("mapreduce.map.cpu.vcores", "2");
         Job job = Job.getInstance(conf, "scopa titan edges loader");
 
         job.setJarByClass(ScopaLoaderMR.class);
