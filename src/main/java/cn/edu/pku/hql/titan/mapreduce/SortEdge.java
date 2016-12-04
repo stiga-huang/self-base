@@ -13,9 +13,13 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import java.io.IOException;
 
 /**
- * Created by huangql on 5/3/16.
+ * Sort Edges of RYCC and remove duplicated.
  */
 public class SortEdge {
+
+    enum Counter {
+        duplicated
+    }
 
     public static class SortMapper
             extends Mapper<Object, Text, Text, Text> {
@@ -27,8 +31,9 @@ public class SortEdge {
             String[] fields = value.toString().split("\u0001");
             String key1 = fields[0];
             String key2 = fields[19];
+            String time = fields[9];
             if (key1.compareTo(key2) < 0) {
-                sortKey.set(key1 + key2);
+                sortKey.set(key1 + key2 + time);
                 context.write(sortKey, value);
             } else {
                 StringBuilder sb = new StringBuilder();
@@ -37,7 +42,7 @@ public class SortEdge {
                 for (int i = 0; i < 18; i++)
                     sb.append(fields[i]).append("\u0001");
                 sb.append(fields[18]);
-                sortKey.set(key2 + key1);
+                sortKey.set(key2 + key1 + time);
                 edgeValue.set(sb.toString());
                 context.write(sortKey, edgeValue);
             }
@@ -49,8 +54,16 @@ public class SortEdge {
 
         protected void reduce(Text key, Iterable<Text> values, Context context)
                 throws IOException, InterruptedException {
-            for(Text value: values) {
+            int cnt = 0;
+            for (Text value: values) {
                 context.write(NullWritable.get(), value);
+                cnt++;
+                if (cnt == 2)
+                    System.out.println("lines with duplicate key:");
+                if (cnt >= 2) {
+                    System.out.println(value.toString().replaceAll("\\u0001", "\t"));
+                    context.getCounter(Counter.duplicated).increment(1);
+                }
             }
         }
     }
@@ -62,6 +75,10 @@ public class SortEdge {
         }
 
         Configuration conf = new Configuration();
+        conf.set("mapreduce.job.reduce.slowstart.completedmaps", "1");
+        conf.set("mapreduce.reduce.memory.mb", "3072");
+        //conf.set("mapreduce.reduce.shuffle.memory.limit.percent", "0.5"); // does not speed up...
+
         Job job = Job.getInstance(conf, "sort edge");
 
         job.setJarByClass(SortEdge.class);
@@ -71,6 +88,7 @@ public class SortEdge {
         job.setReducerClass(SortReducer.class);
         job.setOutputKeyClass(NullWritable.class);
         job.setNumReduceTasks(20);
+        job.setSpeculativeExecution(false);
 
         FileInputFormat.addInputPath(job, new Path(args[0]));
         FileOutputFormat.setOutputPath(job, new Path(args[1]));
