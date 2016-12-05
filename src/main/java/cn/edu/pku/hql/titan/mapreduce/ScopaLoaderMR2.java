@@ -52,17 +52,15 @@ public class ScopaLoaderMR2 {
             extends Mapper<Object, Text, ImmutableBytesWritable, Put> {
 
         private static final String timeFormat = "yyyy-MM-dd HH:mm:ss";
-
-        private ImmutableBytesWritable rowKey = new ImmutableBytesWritable();
-
         private static final byte[] columnFamily = Bytes.toBytes("f");
         private static final byte[] columnQualifier = Bytes.toBytes("c");
 
+        private ImmutableBytesWritable rowKey = new ImmutableBytesWritable();
         private TitanGraph graph;
         private String label;
-        private int key1Index, key2Index, timeIndex;
-        int edgeTimes;
+        private int key1Index, key2Index, timeIndex, edgeTimes;
         private Counter badLineCount, committedCount;
+        private Counter vertexQueryTime, edgeQueryTime, addEdgeTime, commitTime, totalTime;
 
         static {
             Util.suppressUselessInfoLogs();
@@ -79,10 +77,16 @@ public class ScopaLoaderMR2 {
 
             badLineCount = context.getCounter("dataloader", "Bad Lines");
             committedCount = context.getCounter("dataloader", "Committed Edges");
+            vertexQueryTime = context.getCounter("dataloader", "Vertex Query Time");
+            edgeQueryTime = context.getCounter("dataloader", "Edge Query Time");
+            addEdgeTime = context.getCounter("dataloader", "Add Edge Time");
+            commitTime = context.getCounter("dataloader", "Graph Commit Time");
+            totalTime = context.getCounter("dataloader", "Total Map Time");
         }
 
         public void map(Object key, Text value, Context context)
                 throws IOException, InterruptedException {
+            long wholeTs = System.currentTimeMillis();
             FileSystem fs = FileSystem.get(context.getConfiguration());
             BufferedReader reader = new BufferedReader(new InputStreamReader(
                     fs.open(new Path(value.toString()))));
@@ -96,6 +100,9 @@ public class ScopaLoaderMR2 {
                     badLineCount.increment(1);
                     continue;
                 }
+
+                /// Get Vertices
+                long ts = System.currentTimeMillis();
                 TitanVertex v1, v2;
                 Iterator<Vertex> it1 = graph.getVertices("key", fields[key1Index]).iterator();
                 Iterator<Vertex> it2 = graph.getVertices("key", fields[key2Index]).iterator();
@@ -118,12 +125,20 @@ public class ScopaLoaderMR2 {
                 }
                 v1 = (TitanVertex) it1.next();
                 v2 = (TitanVertex) it2.next();
+                vertexQueryTime.increment(System.currentTimeMillis() - ts);
+
+                /// Get or add edge
+                ts = System.currentTimeMillis();
                 TitanEdge edge;
                 Iterator<TitanEdge> eit = v1.query().adjacent(v2).labels(label).limit(1).titanEdges().iterator();
                 if (eit.hasNext()) {
                     edge = eit.next();
+                    edgeQueryTime.increment(System.currentTimeMillis() - ts);
                 } else {
+                    edgeQueryTime.increment(System.currentTimeMillis() - ts);
+                    ts = System.currentTimeMillis();
                     edge = v1.addEdge(label, v2);
+                    addEdgeTime.increment(System.currentTimeMillis() - ts);
                 }
 
                 byte[] lineBytes = Bytes.toBytes(line);
@@ -136,15 +151,21 @@ public class ScopaLoaderMR2 {
                     batchCnt++;
                 }
                 if (batchCnt >= 2000) {
-                    graph.commit();
-                    committedCount.increment(batchCnt);
+                    graphCommit(batchCnt);
                     batchCnt = 0;
                 }
             }
-            graph.commit();
-            committedCount.increment(batchCnt);
+            graphCommit(batchCnt);
 
             reader.close();
+            totalTime.increment(System.currentTimeMillis() - wholeTs);
+        }
+
+        private void graphCommit(int currBatchCnt) {
+            long ts = System.currentTimeMillis();
+            graph.commit();
+            commitTime.increment(System.currentTimeMillis() - ts);
+            committedCount.increment(currBatchCnt);
         }
 
         public void cleanup(Context context) throws IOException, InterruptedException {
@@ -187,7 +208,8 @@ public class ScopaLoaderMR2 {
 
     public static void main(String[] args) throws Exception {
         if (args.length < 4) {
-            System.out.println("Args: titanConf hdfsTitanLibs label indices(key1,key2,time) inputPath [edge_times]");
+            System.out.println("Args: titanConf hdfsTitanLibs label indices(key1,key2,time) " +
+                    "inputFileNames linePerSplit [edge_times]");
             System.exit(1);
         }
         String titanConf = args[0];
@@ -195,10 +217,11 @@ public class ScopaLoaderMR2 {
         String label = args[2];
         String indices = args[3];
         String inputPath = args[4];
+        String linePerSplit = args[5];
         String edgeTimes = "100";
-        if (args.length > 4) {
-            Integer.parseInt(args[5]);
-            edgeTimes = args[5];
+        if (args.length > 6) {
+            Integer.parseInt(args[6]);
+            edgeTimes = args[6];
         }
 
         String[] ss = indices.split(",");
@@ -208,6 +231,13 @@ public class ScopaLoaderMR2 {
         String key1Index = ss[0];
         String key2Index = ss[1];
         String timeIndex = ss[2];
+
+        logger.info("Args:\ntitanConf: " + titanConf + "\ntitanLibDir: " + titanLibDir
+                + "\nlabel: " + label + "\nkey1Index: " + key1Index + "\nkey2Index: "
+                + key2Index + "\ntimeIndex: " + timeIndex + "\ninputFilesName: " + inputPath
+                + "\nlinePerSplit: " + linePerSplit + "\nedgeTimes: " + edgeTimes
+                + "\nedgeTableName: " + TABLE_NAME + "\ntitanTableName: "
+                + Util.getTitanHBaseTableName(titanConf));
 
         // make edge schema
         TitanGraph graph = TitanFactory.open(titanConf);
@@ -224,7 +254,7 @@ public class ScopaLoaderMR2 {
         Configuration conf = HBaseConfiguration.create();
         createTable(TABLE_NAME, conf);
 
-        Job job = Job.getInstance(conf, "scopa titan edges loader " + edgeTimes + " times");
+        Job job = Job.getInstance(conf, "ScopaEdgeLoader(" + edgeTimes + " times)");
 
         job.setJarByClass(ScopaLoaderMR2.class);
         job.setMapperClass(WorkerMapper.class);
@@ -233,9 +263,13 @@ public class ScopaLoaderMR2 {
 
         job.setInputFormatClass(NLineInputFormat.class);
         NLineInputFormat.addInputPath(job, new Path(inputPath));
-        NLineInputFormat.setNumLinesPerSplit(job, 4);
+        NLineInputFormat.setNumLinesPerSplit(job, Integer.parseInt(linePerSplit));
         FileOutputFormat.setOutputPath(job, new Path("/tmp/scopaBulkLoading"));
 
+        //job.getConfiguration().set("mapreduce.map.memory.mb", "8192");
+        job.getConfiguration().set("mapreduce.map.cpu.vcores", "8");
+        // default task timeout is 10min, set it to 0 to disable timeout
+        job.getConfiguration().set("mapreduce.task.timeout", "0");
         // make sure every worker running uniquely
         job.setSpeculativeExecution(false);
 

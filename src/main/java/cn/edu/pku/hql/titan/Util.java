@@ -3,6 +3,10 @@ package cn.edu.pku.hql.titan;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.IOException;
+
 /**
  * Utils used in titan tests
  *
@@ -18,5 +22,16 @@ public class Util {
     public static void suppressUselessInfoLogs() {
         for (String prefix : uselessInfoLogs)
             Logger.getLogger(prefix).setLevel(Level.WARN);
+    }
+
+    public static String getTitanHBaseTableName(String titanConf) throws IOException {
+        BufferedReader reader = new BufferedReader(new FileReader(titanConf));
+        String line;
+        while ((line = reader.readLine()) != null) {
+            if (line.startsWith("storage.hbase.table")) {
+                return line.substring(line.indexOf('=') + 1);
+            }
+        }
+        return "Not Set!!!";
     }
 }
