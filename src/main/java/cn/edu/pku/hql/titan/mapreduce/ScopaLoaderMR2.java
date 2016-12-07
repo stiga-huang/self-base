@@ -116,6 +116,9 @@ public class ScopaLoaderMR2 {
                     badLineCount.increment(1);
                     continue;
                 }
+                v1 = (TitanVertex) it1.next();
+                v2 = (TitanVertex) it2.next();
+                vertexQueryTime.increment(System.currentTimeMillis() - ts);
                 long timeStamp = System.currentTimeMillis();
                 try {
                     timeStamp = new SimpleDateFormat(timeFormat)
@@ -123,9 +126,6 @@ public class ScopaLoaderMR2 {
                 } catch (ParseException e) {
                     logger.error("can't parse time string: " + fields[timeIndex]);
                 }
-                v1 = (TitanVertex) it1.next();
-                v2 = (TitanVertex) it2.next();
-                vertexQueryTime.increment(System.currentTimeMillis() - ts);
 
                 /// Get or add edge
                 ts = System.currentTimeMillis();
@@ -150,7 +150,7 @@ public class ScopaLoaderMR2 {
                     context.write(rowKey, put);
                     batchCnt++;
                 }
-                if (batchCnt >= 2000) {
+                if (batchCnt >= 20000) {
                     graphCommit(batchCnt);
                     batchCnt = 0;
                 }
@@ -267,7 +267,7 @@ public class ScopaLoaderMR2 {
         FileOutputFormat.setOutputPath(job, new Path("/tmp/scopaBulkLoading"));
 
         //job.getConfiguration().set("mapreduce.map.memory.mb", "8192");
-        job.getConfiguration().set("mapreduce.map.cpu.vcores", "8");
+        job.getConfiguration().set("mapreduce.map.cpu.vcores", "4");
         // default task timeout is 10min, set it to 0 to disable timeout
         job.getConfiguration().set("mapreduce.task.timeout", "0");
         // make sure every worker running uniquely

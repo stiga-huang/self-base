@@ -45,7 +45,8 @@ public class RawLoaderMR2 {
         String label;
         int key1Index, key2Index, timeIndex;
         int edgeTimes;
-        private Counter badLineCount;
+        private Counter badLineCount, committedCount;
+        private Counter vertexQueryTime, addEdgeTime, commitTime, totalTime;
 
         static {
             Util.suppressUselessInfoLogs();
@@ -61,10 +62,16 @@ public class RawLoaderMR2 {
             edgeTimes = Integer.parseInt(conf.get(EDGE_TIMES_KEY));
 
             badLineCount = context.getCounter("dataloader", "Bad Lines");
+            committedCount = context.getCounter("dataloader", "Committed Edges");
+            vertexQueryTime = context.getCounter("dataloader", "Vertex Query Time");
+            addEdgeTime = context.getCounter("dataloader", "Add Edge Time");
+            commitTime = context.getCounter("dataloader", "Graph Commit Time");
+            totalTime = context.getCounter("dataloader", "Total Map Time");
         }
 
         public void map(Object key, Text value, Context context)
                 throws IOException, InterruptedException {
+            long wholeTs = System.currentTimeMillis();
             FileSystem fs = FileSystem.get(context.getConfiguration());
             BufferedReader reader = new BufferedReader(new InputStreamReader(
                     fs.open(new Path(value.toString()))));
@@ -78,6 +85,9 @@ public class RawLoaderMR2 {
                     badLineCount.increment(1);
                     continue;
                 }
+
+                /// Get Vertices
+                long ts = System.currentTimeMillis();
                 TitanVertex v1, v2;
                 Iterator<Vertex> it1 = graph.getVertices("key", fields[key1Index]).iterator();
                 Iterator<Vertex> it2 = graph.getVertices("key", fields[key2Index]).iterator();
@@ -93,6 +103,7 @@ public class RawLoaderMR2 {
                 }
                 v1 = (TitanVertex) it1.next();
                 v2 = (TitanVertex) it2.next();
+                vertexQueryTime.increment(System.currentTimeMillis() - ts);
                 long timeStamp = System.currentTimeMillis();
                 try {
                     timeStamp = new SimpleDateFormat(timeFormat)
@@ -101,21 +112,31 @@ public class RawLoaderMR2 {
                     logger.error("can't parse time string: " + fields[timeIndex]);
                 }
 
+                ts = System.currentTimeMillis();
                 for (int i = 0; i < edgeTimes; i++) {
                     TitanEdge edge = v1.addEdge(label, v2);
                     edge.setProperty("time", timeStamp + i * 1000);
                     edge.setProperty("value", line);
                     batchCnt++;
                 }
+                addEdgeTime.increment(System.currentTimeMillis() - ts);
 
                 if (batchCnt >= 20000) {
-                    graph.commit();
+                    graphCommit(batchCnt);
                     batchCnt = 0;
                 }
             }
-            graph.commit();
+            graphCommit(batchCnt);
 
             reader.close();
+            totalTime.increment(System.currentTimeMillis() - wholeTs);
+        }
+
+        private void graphCommit(int currBatchCnt) {
+            long ts = System.currentTimeMillis();
+            graph.commit();
+            commitTime.increment(System.currentTimeMillis() - ts);
+            committedCount.increment(currBatchCnt);
         }
 
         public void cleanup(Context context) throws IOException, InterruptedException {
