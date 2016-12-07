@@ -26,8 +26,8 @@ import java.util.Iterator;
 /**
  * Created by huangql on 4/22/16.
  */
-public class RawLoaderMR2 {
-    private static final Logger logger = Logger.getLogger(RawLoaderMR2.class);
+public class RawLoaderMR {
+    private static final Logger logger = Logger.getLogger(RawLoaderMR.class);
 
     public static final String TITAN_CONF_KEY = "rawDataLoader.titan.conf";
     public static final String LABEL_KEY = "rawDataLoader.label";
@@ -193,7 +193,7 @@ public class RawLoaderMR2 {
         Configuration conf = new Configuration();
         Job job = Job.getInstance(conf, "raw titan edges loader " + edgeTimes + " times");
 
-        job.setJarByClass(RawLoaderMR2.class);
+        job.setJarByClass(RawLoaderMR.class);
         job.setMapperClass(WorkerMapper.class);
         job.setNumReduceTasks(0);
 

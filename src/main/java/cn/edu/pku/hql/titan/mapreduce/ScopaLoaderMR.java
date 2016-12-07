@@ -36,8 +36,8 @@ import java.util.Iterator;
 /**
  * Created by huangql on 4/24/16.
  */
-public class ScopaLoaderMR2 {
-    private static final Logger logger = Logger.getLogger(ScopaLoaderMR2.class);
+public class ScopaLoaderMR {
+    private static final Logger logger = Logger.getLogger(ScopaLoaderMR.class);
 
     public static final String TITAN_CONF_KEY = "scopaDataLoader.titan.conf";
     public static final String LABEL_KEY = "scopaDataLoader.label";
@@ -256,7 +256,7 @@ public class ScopaLoaderMR2 {
 
         Job job = Job.getInstance(conf, "ScopaEdgeLoader(" + edgeTimes + " times)");
 
-        job.setJarByClass(ScopaLoaderMR2.class);
+        job.setJarByClass(ScopaLoaderMR.class);
         job.setMapperClass(WorkerMapper.class);
         job.setMapOutputKeyClass(ImmutableBytesWritable.class);
         job.setMapOutputValueClass(Put.class);
