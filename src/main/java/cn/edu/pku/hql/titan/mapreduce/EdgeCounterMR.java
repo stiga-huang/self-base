@@ -1,21 +1,20 @@
 package cn.edu.pku.hql.titan.mapreduce;
 
+import cn.edu.pku.hql.titan.Util;
 import com.thinkaurelius.titan.core.TitanFactory;
 import com.thinkaurelius.titan.core.TitanGraph;
 import com.thinkaurelius.titan.core.TitanVertex;
 import com.tinkerpop.blueprints.Vertex;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.LocatedFileStatus;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.fs.RemoteIterator;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Counter;
 import org.apache.hadoop.mapreduce.CounterGroup;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
-import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
+import org.apache.hadoop.mapreduce.lib.input.NLineInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.NullOutputFormat;
 import org.apache.log4j.Logger;
 
@@ -39,10 +38,13 @@ public class EdgeCounterMR {
             extends Mapper<Object, Text, Text, IntWritable> {
 
         TitanGraph graph;
-        int count = 0;
         private Counter edgeCounter;
         private Counter badKeyCounter;
         private Counter dupKeyCounter;
+
+        static {
+            Util.suppressUselessInfoLogs();
+        }
 
         public void setup(Context context) throws IOException, InterruptedException {
             Configuration conf = context.getConfiguration();
@@ -60,7 +62,7 @@ public class EdgeCounterMR {
                 System.out.println("key " + value + " not found!");
                 return;
             }
-            count += ((TitanVertex)it.next()).getEdgeCount();
+            edgeCounter.increment(((TitanVertex)it.next()).getEdgeCount());
             if (it.hasNext()) {
                 dupKeyCounter.increment(1);
                 System.out.println("Duplicate key " + value);
@@ -69,30 +71,20 @@ public class EdgeCounterMR {
 
         public void cleanup(Context context) throws IOException, InterruptedException {
             if (graph != null) {
-                graph.commit();
                 graph.shutdown();
             }
-            edgeCounter.increment(count);
-        }
-    }
-
-    private static void setupClassPath(Job job) throws IOException {
-        FileSystem fs = FileSystem.get(job.getConfiguration());
-        String titanLibDir = "/user/hadoop/huangql/titanLibs";  // TODO should be an argument
-        System.out.println("Using titan libs in HDFS path: " + titanLibDir);
-        RemoteIterator<LocatedFileStatus> libIt = fs.listFiles(new Path(titanLibDir), true);
-        while (libIt.hasNext()) {
-            job.addFileToClassPath(libIt.next().getPath());
         }
     }
 
     public static void main(String[] args) throws Exception {
-        if (args.length < 2) {
-            System.out.println("Args: titanConf inputPath");
+        if (args.length < 4) {
+            System.out.println("Args: titanConf hdfsTitanLibs inputPath linePerSplit");
             System.exit(1);
         }
         String titanConf = args[0];
-        String inputPath = args[1];
+        String titanLibDir = args[1];
+        String inputPath = args[2];
+        String linePerSplit = args[3];
 
         Configuration conf = new Configuration();
         Job job = Job.getInstance(conf, "HyBriG Edge Counter");
@@ -101,8 +93,9 @@ public class EdgeCounterMR {
         job.setMapperClass(VertexLoaderWorker.class);
         job.setNumReduceTasks(0);
 
-        job.setInputFormatClass(TextInputFormat.class);
-        TextInputFormat.addInputPath(job, new Path(inputPath));
+        job.setInputFormatClass(NLineInputFormat.class);
+        NLineInputFormat.addInputPath(job, new Path(inputPath));
+        NLineInputFormat.setNumLinesPerSplit(job, Integer.parseInt(linePerSplit));
         job.setOutputFormatClass(NullOutputFormat.class);
 
         // make sure every worker running uniquely
@@ -110,7 +103,7 @@ public class EdgeCounterMR {
         // default task timeout is 10min, set it to 0 to disable timeout
         job.getConfiguration().set("mapreduce.task.timeout", "0");
 
-        setupClassPath(job);
+        Util.setupClassPath(job, titanLibDir);
 
         // upload titanConf and add to distributed cache
         File file = new File(titanConf);

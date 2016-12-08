@@ -71,6 +71,9 @@ public class EdgeCounter {
                     vertexCnt++;
                     edgeCnt += ((TitanVertex)it.next()).getEdgeCount();
                 }
+                if (vertexCnt % 5000 == 0) {
+                    LOG.info(vertexCnt + ": key = " + id + ", totalEdges = " + edgeCnt);
+                }
             }
         }
         edgeCnt /= 2;

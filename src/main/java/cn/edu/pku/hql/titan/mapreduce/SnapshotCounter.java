@@ -147,19 +147,6 @@ public class SnapshotCounter implements Tool {
         }
     }
 
-    /**
-     * @param titanLibDir titan lib directory in HDFS
-     * @throws IOException
-     */
-    private void setupClassPath(Job job, String titanLibDir) throws IOException {
-        FileSystem fs = FileSystem.get(job.getConfiguration());
-        System.out.println("Using titan libs in HDFS path: " + titanLibDir);
-        RemoteIterator<LocatedFileStatus> libIt = fs.listFiles(new Path(titanLibDir), true);
-        while (libIt.hasNext()) {
-            job.addFileToClassPath(libIt.next().getPath());
-        }
-    }
-
     @Override
     public int run(String[] args) throws Exception {
         if (args.length < 3) {
@@ -188,7 +175,7 @@ public class SnapshotCounter implements Tool {
                 false,
                 new Path("/tmp/snapshot_counter" + new Random().nextInt()));
 
-        setupClassPath(job, libDir);
+        Util.setupClassPath(job, libDir);
         // upload titanConf and add to distributed cache
         File file = new File(titanConf);
         if (!file.exists())
