@@ -2,7 +2,6 @@ package cn.edu.pku.hql.titan;
 
 import com.thinkaurelius.titan.core.TitanFactory;
 import com.thinkaurelius.titan.core.TitanGraph;
-import com.thinkaurelius.titan.core.TitanMultiVertexQuery;
 import com.thinkaurelius.titan.core.TitanVertex;
 import com.tinkerpop.blueprints.Direction;
 import com.tinkerpop.blueprints.Vertex;
@@ -12,58 +11,68 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.Map;
+import java.util.Set;
 
 /**
- * Created by huangql on 4/25/16.
+ * Test for calculating local clustering coefficient
+ *
+ * Created by huangql on 12/8/16.
  */
-public class HopQueryTest {
-    private static final String label = "rycc_relation";
+public class LocalCCTest {
+
+    private static HashSet<Vertex> getNeighbors(Vertex src) {
+        HashSet<Vertex> rs = new HashSet<>();
+        for (Vertex v : src.getVertices(Direction.BOTH)) {
+            rs.add(v);
+        }
+        return rs;
+    }
 
     public static void main(String[] args) throws IOException {
-        if (args.length < 3) {
-            System.out.println("Usage: titanConf vids hops");
+        if (args.length < 2) {
+            System.out.println("Usage: titanConf vids");
             System.exit(1);
         }
         String titanConf = args[0];
         String vidFile = args[1];
-        int hops = Integer.parseInt(args[2]);
-
         TitanGraph graph = TitanFactory.open(titanConf);
         BufferedReader reader = new BufferedReader(new FileReader(vidFile));
         String id;
         long totalTime = 0, ts;
-        int lineCnt = 0, avgVSetSize = 0;
+        int lineCnt = 0;
+        double avgCC = 0;   // average clustering coefficient
         while ((id = reader.readLine()) != null) {
             Iterator<Vertex> it = graph.getVertices("key", id).iterator();
             if (!it.hasNext()) {
                 System.out.println("ERROR: key not found: " + id);
                 continue;
             }
-            TitanVertex srcV = (TitanVertex) it.next();
-            HashSet<Vertex> vSet = new HashSet<>();
-            vSet.add(srcV);
+            TitanVertex v = (TitanVertex) it.next();
 
             ts = System.currentTimeMillis();
-            for (int k = 0; k < hops; k++) {
-                TitanMultiVertexQuery mq = graph.multiQuery();
-                mq.direction(Direction.BOTH).labels(label);
-                mq.addAllVertices(vSet);
-                vSet.clear();
-                Map<TitanVertex,Iterable<TitanVertex>> results = mq.vertices();
-                for (Iterable<TitanVertex> nvs : results.values()) {
-                    for (TitanVertex v : nvs) {
-                        vSet.add(v);
+            double localCC = 0;
+            Set<Vertex> nbs = getNeighbors(v);
+            int n = nbs.size();
+            if (n > 1) {
+                int adjCnt = 0;
+                for (Vertex vi : nbs) {
+                    for (Vertex vj : getNeighbors(vi)) {
+                        if (nbs.contains(vj))
+                            adjCnt++;
                     }
                 }
+                localCC = adjCnt / (double)(n*(n-1));
             }
+            //System.out.println(id + "\t" + localCC);
+            avgCC += localCC;
             totalTime += System.currentTimeMillis() - ts;
 
-            avgVSetSize += vSet.size();
             lineCnt++;
         }
-        System.out.println("average v set size: " + (avgVSetSize / (double)lineCnt));
-        System.out.println("average query time: " + (totalTime / (double)lineCnt));
+        if (lineCnt > 0)    avgCC /= lineCnt;
+        System.out.println("average cc: " + avgCC);
+        if (lineCnt > 0)
+            System.out.println("average time: " + totalTime / (double)lineCnt);
         reader.close();
         graph.shutdown();
     }
