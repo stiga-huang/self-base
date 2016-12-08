@@ -9,17 +9,16 @@ TITAN_HOME=/home/hadoop/titan-bin-0.5.4
 export HADOOP_CLASSPATH=`pwd`:`hadoop classpath`:"$TITAN_HOME/lib/*"
 export HADOOP_USER_CLASSPATH_FIRST=true # important!
 
+HDFS_TITAN_LIBS=/user/hadoop/huangql/titanLibs
 JAR_PATH=base-test-1.0-SNAPSHOT.jar
-MAIN_CLASS=cn.edu.pku.hql.titan.mapreduce.RawLoaderMR2
-HDFS_VERTEX_INPUT_PATH=huangql/data/input/people/allPeopleData
-HDFS_EDGE_FILE_NAME=huangql/data/input/railway_relation/edgeFileNames
-#HDFS_EDGE_FILE_NAME=huangql/data/input_small/edgeFileNames
-#HDFS_EDGE_FILE_NAME=huangql/data/input_small/firstEdgeFileName
+MAIN_CLASS=cn.edu.pku.hql.titan.mapreduce.RawLoaderMR
+HDFS_NAMES_FILE=/user/hadoop/huangql/data/input_mid/rycc_relation_mid/edgeFileNames
+LINE_PER_SPLIT=1
 LOCAL_TITAN_CONF=raw_titan.properties	################################# remember to check this!!!
-EDGE_TIMES=1
+EDGE_TIMES=100
 
 # test of raw dataloader on small set of edges
 #hadoop jar /home/workspace/titan-0.5.4-hadoop2/lib/hbase-test-1.0-SNAPSHOT.jar com.mininglamp.titan.mapreduce.RawLoaderMR raw-titan.properties rycc_relation 0,19,9 DistributedDataloader/data/rycc/relationFileNames true
 
 # test of raw dataloader on large set of edges
-hadoop jar $JAR_PATH $MAIN_CLASS $LOCAL_TITAN_CONF rycc_relation 0,19,9 $HDFS_EDGE_FILE_NAME $EDGE_TIMES
+hadoop jar $JAR_PATH $MAIN_CLASS $LOCAL_TITAN_CONF $HDFS_TITAN_LIBS rycc_relation 0,19,9 $HDFS_NAMES_FILE $LINE_PER_SPLIT $EDGE_TIMES

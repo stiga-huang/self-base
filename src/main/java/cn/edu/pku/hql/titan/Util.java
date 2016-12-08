@@ -1,5 +1,10 @@
 package cn.edu.pku.hql.titan;
 
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.LocatedFileStatus;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.RemoteIterator;
+import org.apache.hadoop.mapreduce.Job;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 
@@ -33,5 +38,14 @@ public class Util {
             }
         }
         return "Not Set!!!";
+    }
+
+    public static void setupClassPath(Job job, String titanLibDir) throws IOException {
+        System.out.println("Using titan libs in HDFS path: " + titanLibDir);
+        FileSystem fs = FileSystem.get(job.getConfiguration());
+        RemoteIterator<LocatedFileStatus> libIt = fs.listFiles(new Path(titanLibDir), true);
+        while (libIt.hasNext()) {
+            job.addFileToClassPath(libIt.next().getPath());
+        }
     }
 }

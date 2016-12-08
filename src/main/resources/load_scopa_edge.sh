@@ -10,10 +10,24 @@ export TITAN_HOME=/home/hadoop/titan-bin-0.5.4
 export HBASE_LIB_DIR=/home/hadoop/hbase-1.0.1.1/lib
 export HBASE_CONF_DIR=/home/hadoop/hbase-1.0.1.1/conf
 
+export HDFS_TITAN_LIBS=/user/hadoop/huangql/titanLibs
 export JAR_FILE=/home/hadoop/huangql/ndbc/base-test-1.0-SNAPSHOT.jar
-export LOCAL_TITAN_CONF=/home/hadoop/huangql/ndbc/scopa_titan.properties
-export HDFS_NAMES_FILE=huangql/data/input/railway_relation/edgeFileNames
-export LINE_PER_SPLIT=4
+export LOCAL_TITAN_CONF=/home/hadoop/huangql/ndbc/scopa_titan.properties #### important! check this file!!!
+export RELATION_TABLE_SUFFIX=_relation	# check this with java codes
+
+#export HDFS_NAMES_FILE=huangql/data/input/railway_relation/edgeFileNames
+#export HDFS_NAMES_FILE=huangql/data/input_small/edgeFileNames
+#export LINE_PER_SPLIT=4
+
+#export HDFS_NAMES_FILE=huangql/data/input/railway_relation/edgeFileNames_840
+#export LINE_PER_SPLIT=84
+
+#export HDFS_NAMES_FILE=huangql/data/input/railway_relation/edgeFileNames_840_15
+#export LINE_PER_SPLIT=1
+
+export HDFS_NAMES_FILE=/user/hadoop/huangql/data/input_mid/rycc_relation_mid/edgeFileNames
+export LINE_PER_SPLIT=1
+
 export MAIN_CLASS=cn.edu.pku.hql.titan.mapreduce.ScopaLoaderMR
 
 export HADOOP_CLASSPATH=`pwd`:`hadoop classpath`:"$HBASE_CONF_DIR":"$TITAN_HOME/lib/*"
@@ -30,16 +44,11 @@ print_info() {
     echo -e "\e[1;32m`date` -- $1\e[0m"  # print message in green color
 }
 
-#test of scopa dataloader on small set of edges
-#echo test of scopa dataloader on small set of edges
-#hadoop jar /home/workspace/titan-0.5.4-hadoop2/lib/hbase-test-1.0-SNAPSHOT.jar com.mininglamp.titan.mapreduce.ScopaLoaderMR titan-hbase-es.properties rycc_relation 0,19,9 DistributedDataloader/data/rycc/relationFileNames2
-
 HDFS_OUTPUT_PATH=/tmp/scopaBulkLoading
 hdfs dfs -rm -r $HDFS_OUTPUT_PATH > /dev/null 2>&1
 
-# test of scopa dataloader on large set of edges
-print_info "test of scopa dataloader on large set of edges"
-hadoop jar $JAR_FILE $MAIN_CLASS $LOCAL_TITAN_CONF rycc_relation 0,19,9 $HDFS_NAMES_FILE $LINE_PER_SPLIT
+print_info "running scopa edge loader"
+hadoop jar $JAR_FILE $MAIN_CLASS $LOCAL_TITAN_CONF $HDFS_TITAN_LIBS rycc_relation 0,19,9 $HDFS_NAMES_FILE $LINE_PER_SPLIT 100
 
 if [ $? != 0 ]; then
     print_error 'batch process failed'
@@ -49,8 +58,9 @@ fi
 export HADOOP_USER_NAME=hdfs
 hdfs dfs -chown -R hbase:hbase $HDFS_OUTPUT_PATH
 
-print_info "completing bulkload, moving HFile into HBase"
-hadoop jar $HBASE_LIB_DIR/hbase-server-1.0.1.1.jar completebulkload $HDFS_OUTPUT_PATH rycc_relation
+HBASE_TABLE=$(grep '^storage.hbase.table=' scopa_titan.properties | cut -d'=' -f2)$RELATION_TABLE_SUFFIX
+print_info "completing bulkload, moving HFile into HBase table $HBASE_TABLE"
+hadoop jar $HBASE_LIB_DIR/hbase-server-1.0.1.1.jar completebulkload $HDFS_OUTPUT_PATH $HBASE_TABLE
 if [ $? != 0 ]; then
     print_error "failed to complete bulkload"
     exit 1

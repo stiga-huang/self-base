@@ -46,7 +46,7 @@ public class ScopaLoaderMR {
     public static final String TIME_INDEX_KEY = "scopaDataLoader.time.index";
     public static final String EDGE_TIMES_KEY = "scopaDataLoader.edge.times";
 
-    public static final String TABLE_NAME = "rycc_relation";
+    public static final String TABLE_NAME_SUFFIX = "_relation";
 
     public static class WorkerMapper
             extends Mapper<Object, Text, ImmutableBytesWritable, Put> {
@@ -174,14 +174,6 @@ public class ScopaLoaderMR {
         }
     }
 
-    private static void setupClassPath(Job job, String titanLibDir) throws IOException {
-        FileSystem fs = FileSystem.get(job.getConfiguration());
-        RemoteIterator<LocatedFileStatus> libIt = fs.listFiles(new Path(titanLibDir), true);
-        while (libIt.hasNext()) {
-            job.addFileToClassPath(libIt.next().getPath());
-        }
-    }
-
     public static boolean createTable(String tableName, Configuration conf) {
         try (HBaseAdmin hBaseAdmin = new HBaseAdmin(HBaseConfiguration.create(conf))) {
             if (hBaseAdmin.tableExists(tableName)) {
@@ -231,13 +223,13 @@ public class ScopaLoaderMR {
         String key1Index = ss[0];
         String key2Index = ss[1];
         String timeIndex = ss[2];
-
+        String titanHBaseTable = Util.getTitanHBaseTableName(titanConf);
+        String edgeTableName = titanHBaseTable + TABLE_NAME_SUFFIX;
         logger.info("Args:\ntitanConf: " + titanConf + "\ntitanLibDir: " + titanLibDir
                 + "\nlabel: " + label + "\nkey1Index: " + key1Index + "\nkey2Index: "
                 + key2Index + "\ntimeIndex: " + timeIndex + "\ninputFilesName: " + inputPath
                 + "\nlinePerSplit: " + linePerSplit + "\nedgeTimes: " + edgeTimes
-                + "\nedgeTableName: " + TABLE_NAME + "\ntitanTableName: "
-                + Util.getTitanHBaseTableName(titanConf));
+                + "\nedgeTableName: " + edgeTableName + "\ntitanTableName: " + titanHBaseTable);
 
         // make edge schema
         TitanGraph graph = TitanFactory.open(titanConf);
@@ -252,7 +244,7 @@ public class ScopaLoaderMR {
         graph.shutdown();
         // create hbase table;
         Configuration conf = HBaseConfiguration.create();
-        createTable(TABLE_NAME, conf);
+        createTable(edgeTableName, conf);
 
         Job job = Job.getInstance(conf, "ScopaEdgeLoader(" + edgeTimes + " times)");
 
@@ -267,13 +259,13 @@ public class ScopaLoaderMR {
         FileOutputFormat.setOutputPath(job, new Path("/tmp/scopaBulkLoading"));
 
         //job.getConfiguration().set("mapreduce.map.memory.mb", "8192");
-        job.getConfiguration().set("mapreduce.map.cpu.vcores", "4");
+        //job.getConfiguration().set("mapreduce.map.cpu.vcores", "4");
         // default task timeout is 10min, set it to 0 to disable timeout
         job.getConfiguration().set("mapreduce.task.timeout", "0");
         // make sure every worker running uniquely
         job.setSpeculativeExecution(false);
 
-        setupClassPath(job, titanLibDir);
+        Util.setupClassPath(job, titanLibDir);
 
         // upload titanConf and add to distributed cache
         File file = new File(titanConf);
@@ -296,7 +288,7 @@ public class ScopaLoaderMR {
         job.getConfiguration().set(EDGE_TIMES_KEY, edgeTimes);
 
         // setup reducer by HFileOutputFormat2
-        try (HTable table = new HTable(conf, TABLE_NAME)) {
+        try (HTable table = new HTable(conf, edgeTableName)) {
             HFileOutputFormat2.configureIncrementalLoad(job, table);
         }
 

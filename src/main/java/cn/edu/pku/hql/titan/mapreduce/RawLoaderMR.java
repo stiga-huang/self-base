@@ -145,29 +145,22 @@ public class RawLoaderMR {
         }
     }
 
-    private static void setupClassPath(Job job) throws IOException {
-        FileSystem fs = FileSystem.get(job.getConfiguration());
-        String titanLibDir = "/user/hadoop/huangql/titanLibs";  // TODO should be an argument
-        RemoteIterator<LocatedFileStatus> libIt = fs.listFiles(new Path(titanLibDir), true);
-        while (libIt.hasNext()) {
-            job.addFileToClassPath(libIt.next().getPath());
-        }
-    }
-
     public static void main(String[] args) throws Exception {
         if (args.length < 4) {
-            System.out.println("Args: titanConf label indices(key1,key2,time) inputPath [edge_times]");
-            System.out.println("Example: hbase-es-titan.properties rycc 0,19,9 input/edgeFileNames 1");
+            System.out.println("Args: titanConf hdfsTitanLibs label indices(key1,key2,time) " +
+                    "inputFileNames linePerSplit [edge_times]");
             System.exit(1);
         }
         String titanConf = args[0];
-        String label = args[1];
-        String indices = args[2];
-        String inputPath = args[3];
+        String titanLibDir = args[1];
+        String label = args[2];
+        String indices = args[3];
+        String inputPath = args[4];
+        String linePerSplit = args[5];
         String edgeTimes = "100";
-        if (args.length > 4) {
-            Integer.parseInt(args[4]);
-            edgeTimes = args[4];
+        if (args.length > 6) {
+            Integer.parseInt(args[6]);
+            edgeTimes = args[6];
         }
 
         String[] ss = indices.split(",");
@@ -177,6 +170,11 @@ public class RawLoaderMR {
         String key1Index = ss[0];
         String key2Index = ss[1];
         String timeIndex = ss[2];
+        logger.info("Args:\ntitanConf: " + titanConf + "\ntitanLibDir: " + titanLibDir
+                + "\nlabel: " + label + "\nkey1Index: " + key1Index + "\nkey2Index: "
+                + key2Index + "\ntimeIndex: " + timeIndex + "\ninputFilesName: " + inputPath
+                + "\nlinePerSplit: " + linePerSplit + "\nedgeTimes: " + edgeTimes
+                + "\ntitanTableName: " + Util.getTitanHBaseTableName(titanConf));
 
         // make edge schema
         TitanGraph graph = TitanFactory.open(titanConf);
@@ -191,7 +189,7 @@ public class RawLoaderMR {
         graph.shutdown();
 
         Configuration conf = new Configuration();
-        Job job = Job.getInstance(conf, "raw titan edges loader " + edgeTimes + " times");
+        Job job = Job.getInstance(conf, "RawEdgeLoader(" + edgeTimes + " times)");
 
         job.setJarByClass(RawLoaderMR.class);
         job.setMapperClass(WorkerMapper.class);
@@ -199,7 +197,7 @@ public class RawLoaderMR {
 
         job.setInputFormatClass(NLineInputFormat.class);
         NLineInputFormat.addInputPath(job, new Path(inputPath));
-        NLineInputFormat.setNumLinesPerSplit(job, 4);
+        NLineInputFormat.setNumLinesPerSplit(job, Integer.parseInt(linePerSplit));
         job.setOutputFormatClass(NullOutputFormat.class);
 
         // make sure every worker running uniquely
@@ -209,7 +207,7 @@ public class RawLoaderMR {
         // its status string. A value of 0 disables the timeout.
         job.getConfiguration().set("mapreduce.task.timeout", "0");
 
-        setupClassPath(job);
+        Util.setupClassPath(job, titanLibDir);
 
         // upload titanConf and add to distributed cache
         File file = new File(titanConf);
