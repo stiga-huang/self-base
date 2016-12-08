@@ -18,13 +18,10 @@ import com.thinkaurelius.titan.graphdb.transaction.StandardTitanTx;
 import com.thinkaurelius.titan.util.stats.NumberUtil;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.LocatedFileStatus;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.fs.RemoteIterator;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HConstants;
-import org.apache.hadoop.hbase.client.Result;
-import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.client.*;
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable;
 import org.apache.hadoop.hbase.mapreduce.TableMapReduceUtil;
 import org.apache.hadoop.hbase.mapreduce.TableMapper;
@@ -133,7 +130,9 @@ public class SnapshotCounter implements Tool {
             for (Entry entry : entryList) {
                 RelationCache relation = graph.getEdgeSerializer().readRelation(entry, false, tx);
                 RelationType type = tx.getExistingRelationType(relation.typeId);
-                if (type.isEdgeLabel() && !inspector.isEdgeLabelId(relation.relationId))
+                if (type.isEdgeLabel()
+                        && !inspector.isEdgeLabelId(relation.relationId)
+                        && !inspector.isSystemRelationTypeId(type.getLongId()))
                     edgeCount++;
             }
         }
