@@ -24,7 +24,7 @@ public class EdgeQueryPerf {
     private static Configuration conf = HBaseConfiguration.create();
     private static HConnection conn;
     private static HTableInterface table;
-    private static TitanGraph graph, rawGraph;
+    private static TitanGraph graph;
     private static String edge_ids;
     private static String separator = "\u0001";
     private static byte[] columnFamily = Bytes.toBytes("f");
@@ -32,40 +32,28 @@ public class EdgeQueryPerf {
 
     public static void main(String[] args) throws IOException {
         if (args.length < 3) {
-            System.out.println("Usage: titanConf rawTitanConf edge_ids [rawFirst] [separator]");
+            System.out.println("Usage: titanConf edgeIdFile isRaw [separator]");
             System.exit(1);
         }
         String titanConf = args[0];
-        String rawTitanConf = args[1];
-        edge_ids = args[2];
-        boolean rawFirst = true;
+        edge_ids = args[1];
+        boolean isRaw = Boolean.parseBoolean(args[2]);
         if (args.length > 3) {
-            rawFirst = Boolean.parseBoolean(args[3]);
-            if (args.length > 4) {
-                separator = args[4];
-                System.out.println("separator is \"" + separator + "\"");
-            }
+            separator = args[3];
+            System.out.println("separator is \"" + separator + "\"");
         }
 
         conn = HConnectionManager.createConnection(conf);
         table = conn.getTable(Util.getTitanHBaseTableName(titanConf) + ScopaLoaderMR.TABLE_NAME_SUFFIX);
         graph = TitanFactory.open(titanConf);
-        rawGraph = TitanFactory.open(rawTitanConf);
 
-        int rawCnt, scopaCnt;
-        if (rawFirst) {
-            rawCnt = queryRaw();
-            scopaCnt = queryScopa();
+        if (isRaw) {
+            queryRaw();
         } else {
-            scopaCnt = queryScopa();
-            rawCnt = queryRaw();
-        }
-        if (scopaCnt != rawCnt) {
-            System.err.println("ERROR: scopaCnt = " + scopaCnt + ", rawCnt = " + rawCnt);
+            queryScopa();
         }
 
         graph.shutdown();
-        rawGraph.shutdown();
         conn.close();
     }
 
@@ -154,14 +142,14 @@ public class EdgeQueryPerf {
 
             gts = System.currentTimeMillis();
             TitanVertex v1, v2;
-            Iterator<Vertex> vit = rawGraph.getVertices("key", keys[0]).iterator();
+            Iterator<Vertex> vit = graph.getVertices("key", keys[0]).iterator();
             v1 = vit.hasNext() ? (TitanVertex)vit.next() : null;
             if (v1 == null) {
                 System.err.println("key not found: " + keys[0]);
                 System.exit(1);
                 //continue;
             }
-            vit = rawGraph.getVertices("key", keys[1]).iterator();
+            vit = graph.getVertices("key", keys[1]).iterator();
             v2 = vit.hasNext() ? (TitanVertex)vit.next() : null;
             if (v2 == null) {
                 System.err.println("key not found: " + keys[1]);
