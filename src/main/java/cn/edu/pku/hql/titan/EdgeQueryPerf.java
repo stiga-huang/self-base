@@ -1,5 +1,6 @@
 package cn.edu.pku.hql.titan;
 
+import cn.edu.pku.hql.titan.mapreduce.ScopaLoaderMR;
 import com.thinkaurelius.titan.core.TitanEdge;
 import com.thinkaurelius.titan.core.TitanFactory;
 import com.thinkaurelius.titan.core.TitanGraph;
@@ -18,7 +19,7 @@ import java.util.Iterator;
 /**
  * Created by huangql on 4/24/16.
  */
-public class EdgeQueryTest2 {
+public class EdgeQueryPerf {
 
     private static Configuration conf = HBaseConfiguration.create();
     private static HConnection conn;
@@ -47,24 +48,16 @@ public class EdgeQueryTest2 {
         }
 
         conn = HConnectionManager.createConnection(conf);
-        table = conn.getTable("rycc_relation");
+        table = conn.getTable(Util.getTitanHBaseTableName(titanConf) + ScopaLoaderMR.TABLE_NAME_SUFFIX);
         graph = TitanFactory.open(titanConf);
         rawGraph = TitanFactory.open(rawTitanConf);
 
         int rawCnt, scopaCnt;
         if (rawFirst) {
             rawCnt = queryRaw();
-            rawCnt = queryRaw();
-            rawCnt = queryRaw();
-            scopaCnt = queryScopa();
-            scopaCnt = queryScopa();
             scopaCnt = queryScopa();
         } else {
             scopaCnt = queryScopa();
-            scopaCnt = queryScopa();
-            scopaCnt = queryScopa();
-            rawCnt = queryRaw();
-            rawCnt = queryRaw();
             rawCnt = queryRaw();
         }
         if (scopaCnt != rawCnt) {
