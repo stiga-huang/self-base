@@ -58,6 +58,7 @@ public class GetEdgePerf {
         try (BufferedReader reader = new BufferedReader(new FileReader(vidFile))) {
             String id;
             long totalTime = 0, ts;
+            long totalSerTime = 0, sts;
             int edgeCnt = 0, vertexCnt = 0;
             while ((id = reader.readLine()) != null) {
                 ts = System.currentTimeMillis();
@@ -71,8 +72,11 @@ public class GetEdgePerf {
 
                 //ts = System.currentTimeMillis();
                 for (TitanEdge e : v.getEdges()) {
+                    sts = System.currentTimeMillis();
                     long timeValue = e.getProperty("time");
                     String content = e.getProperty("value");
+                    totalSerTime += System.currentTimeMillis() - sts;
+
                     edgeCnt++;
                 }
                 totalTime += System.currentTimeMillis() - ts;
@@ -80,7 +84,8 @@ public class GetEdgePerf {
             System.out.println("Raw:\t"
                     + "totalEdges = " + edgeCnt + ", totalTime = " + totalTime
                     + ", time/edge = " + totalTime / (double) edgeCnt
-                    + ", time/vertex = " + totalTime / (double) vertexCnt);
+                    + ", time/vertex = " + totalTime / (double) vertexCnt
+                    + ", totalSerializeTime = " + totalSerTime);
         }
         graph.shutdown();
     }
@@ -102,6 +107,7 @@ public class GetEdgePerf {
                 try (BufferedReader reader = new BufferedReader(new FileReader(vidFile))) {
                     String id;
                     long totalTime = 0, ts;
+                    long totalSerTime = 0, sts;
                     long totalHBaseTime = 0, hts;
                     int edgeCnt = 0, vertexCnt = 0;
                     while ((id = reader.readLine()) != null) {
@@ -125,10 +131,13 @@ public class GetEdgePerf {
                             scan.setCaching(Integer.MAX_VALUE);
                             try (ResultScanner rs = table.getScanner(scan)) {
                                 for (Result r : rs) {
+                                    sts = System.currentTimeMillis();
                                     String row = new String(r.getRow());
                                     long timeValue = Long.parseLong(row.substring(row.lastIndexOf('_') + 1));
                                     String content = new String(CellUtil.cloneValue(r.getColumnLatestCell(
                                             COLUMN_FAMILY, COLUMN_QUALIFIER)));
+                                    totalSerTime += System.currentTimeMillis() - sts;
+
                                     edgeCnt++;
                                 }
                             }
@@ -140,6 +149,7 @@ public class GetEdgePerf {
                             + "totalEdges = " + edgeCnt + ", totalTime = " + totalTime
                             + ", time/edge = " + totalTime / (double) edgeCnt
                             + ", time/vertex = " + totalTime / (double) vertexCnt
+                            + ", totalSerializeTime = " + totalSerTime
                             + ", totalHBaseTime = " + totalHBaseTime);
                 }
             }
