@@ -81,11 +81,11 @@ public class GetEdgePerf {
                 }
                 totalTime += System.currentTimeMillis() - ts;
             }
-            System.out.println("Raw:\t"
-                    + "totalEdges = " + edgeCnt + ", totalTime = " + totalTime
-                    + ", time/edge = " + totalTime / (double) edgeCnt
-                    + ", time/vertex = " + totalTime / (double) vertexCnt
-                    + ", totalSerializeTime = " + totalSerTime);
+            System.out.println(String.format("Raw:\ttotalEdges = %d, totalTime = %d"
+                    + ", time/edge = %2f, time/vertex = %f" +
+                    ", totalSerTime = %d, serTime/edge = %f",
+                    edgeCnt, totalTime, totalTime / (double) edgeCnt, totalTime / (double) vertexCnt,
+                    totalSerTime, totalSerTime / (double) edgeCnt));
         }
         graph.shutdown();
     }
@@ -145,12 +145,12 @@ public class GetEdgePerf {
                         }
                         totalTime += System.currentTimeMillis() - ts;
                     }
-                    System.out.println("Scopa:\t"
-                            + "totalEdges = " + edgeCnt + ", totalTime = " + totalTime
-                            + ", time/edge = " + totalTime / (double) edgeCnt
-                            + ", time/vertex = " + totalTime / (double) vertexCnt
-                            + ", totalSerializeTime = " + totalSerTime
-                            + ", totalHBaseTime = " + totalHBaseTime);
+                    System.out.println(String.format("Scopa:\ttotalEdges = %d, totalTime = %d" +
+                            ", time/edge = %2f, time/vertex = %f" +
+                            ", totalSerTime = %d, serTime/edge = %f" +
+                            ", totalHBaseTime = %d",
+                            edgeCnt, totalTime, totalTime / (double) edgeCnt, totalTime / (double) vertexCnt,
+                            totalSerTime, totalSerTime / (double) edgeCnt, totalHBaseTime));
                 }
             }
         }
