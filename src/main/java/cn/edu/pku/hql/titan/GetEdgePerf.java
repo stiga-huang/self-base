@@ -72,10 +72,10 @@ public class GetEdgePerf {
 
                 //ts = System.currentTimeMillis();
                 for (TitanEdge e : v.getEdges()) {
-                    sts = System.currentTimeMillis();
+//                    sts = System.currentTimeMillis();
                     long timeValue = e.getProperty("time");
                     String content = e.getProperty("value");
-                    totalSerTime += System.currentTimeMillis() - sts;
+//                    totalSerTime += System.currentTimeMillis() - sts;
 
                     edgeCnt++;
                 }
@@ -131,12 +131,12 @@ public class GetEdgePerf {
                             scan.setCaching(Integer.MAX_VALUE);
                             try (ResultScanner rs = table.getScanner(scan)) {
                                 for (Result r : rs) {
-                                    sts = System.currentTimeMillis();
+//                                    sts = System.currentTimeMillis();
                                     String row = new String(r.getRow());
                                     long timeValue = Long.parseLong(row.substring(row.lastIndexOf('_') + 1));
                                     String content = new String(CellUtil.cloneValue(r.getColumnLatestCell(
                                             COLUMN_FAMILY, COLUMN_QUALIFIER)));
-                                    totalSerTime += System.currentTimeMillis() - sts;
+//                                    totalSerTime += System.currentTimeMillis() - sts;
 
                                     edgeCnt++;
                                 }
