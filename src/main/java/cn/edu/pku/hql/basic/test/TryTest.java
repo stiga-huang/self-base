@@ -24,14 +24,34 @@ public class TryTest {
         }
     }
 
+    /**
+     * try中的变量初始化语句抛出的异常也能被catch捕获, 对象的close函数不会被调用
+     */
+    public static void test2() {
+        try (MyCloseable c = new MyCloseable(true)) {
+            c.Do();
+        } catch (Exception e) {
+            System.out.println("catch exception in var generation");
+        }
+    }
+
     public static void main(String[] args) {
         test1();
+        test2();
     }
+}
+class MyException extends Exception {
+
 }
 class MyCloseable implements Closeable {
 
     public MyCloseable() {
         System.out.println("call <init>");
+    }
+
+    public MyCloseable(Boolean throwException) throws MyException {
+        if (throwException)
+            throw new MyException();
     }
 
     public void Do() throws InterruptedException {
